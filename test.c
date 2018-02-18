@@ -26,9 +26,14 @@
 #define DEADBAND_MAX 60  // values larger than this (but less than in_max) result in full on
 #define OUT_MIN 0        // minimum duty cycle (out of 255)
 #define OUT_MAX 0xff     // maximum duty cycle (out of 255)
-#define MAX_DOGS 2       // number of timer 2 overflows between watchdog checks
+#define MAX_DOGS 3       // number of timer 2 overflows between watchdog checks
 #define MIN_EDGES 2      // minimum number of edges required to make watchdog happy
-#define MAX_EDGES 6      // maximum number of edges required to make watchdog happy
+#define MAX_EDGES 12      // maximum number of edges required to make watchdog happy
+
+#define NOTE_1 (92*2*4)
+#define NOTE_2 (82*2*4)
+#define NOTE_3 (73*2*4)
+#define NOTE_4 (61*2*4)
 
 // number of PWM_IN timer overflows
 uint8_t dog_counter = 0;
@@ -36,6 +41,11 @@ uint8_t dog_counter = 0;
 uint8_t has_pwm = 0;
 // number of PWM in edges
 uint8_t edges = 0;
+
+uint8_t is_startup = 1;
+
+
+uint8_t filtered_value = 0;
 
 // map PWM pulse duration to output
 uint8_t map(uint8_t x, uint8_t in_min, uint8_t in_max, uint8_t out_min, uint8_t out_max)
@@ -62,6 +72,46 @@ void danger_output_pin()
     TCCR1B |= (1 << WGM12)|(1 << WGM13);
 }
 
+void delay_ms(uint8_t ms) {
+    uint16_t delay_count = F_CPU / 17500;
+    volatile uint16_t i;
+
+    while (ms != 0) {
+        for (i=0; i != delay_count; i++);
+        ms--;
+    }
+}
+
+
+void note_delay()
+{
+    delay_ms(12);
+}
+
+void hobby_king()
+{
+    delay_ms(24);
+    OCR1A = 0x10;
+    danger_output_pin();
+    ICR1 = NOTE_1;
+    note_delay();
+    ICR1 = NOTE_2;
+    note_delay();
+    ICR1 = NOTE_3;
+    note_delay();
+    ICR1 = NOTE_4;
+    note_delay();
+    note_delay();
+    ICR1 = NOTE_3;
+    note_delay();
+    ICR1 = NOTE_4;
+    note_delay();
+    note_delay();
+    ICR1 = 0xff;
+    safe_output_pin();
+}
+
+
 // initialize all timer stuff
 void init_pwm()
 {
@@ -78,6 +128,7 @@ void init_pwm()
     TCCR1A |= (1 << COM1A1)|(1 << COM1B1);
     TCCR1A |= (1 << WGM11);
     TCCR1B |= (1 << WGM12)|(1 << WGM13);
+
 
     // clear interuppts
     cli();
@@ -109,6 +160,11 @@ uint8_t t_diff = 0;
 // timer 2 overflow (watchdog)
 ISR(TIMER2_OVF_vect)
 {
+    if(is_startup)
+    {
+        danger_output_pin();
+        return;
+    }
     // increment number of overflows
     dog_counter++;
     // if we've had enough, check edges
@@ -116,7 +172,10 @@ ISR(TIMER2_OVF_vect)
     {
         dog_counter = 0;
         if(edges > MAX_EDGES || edges < MIN_EDGES)
+        {
+            filtered_value = 0;
             has_pwm = 0;
+        }
         else
             has_pwm = 1;
 
@@ -133,6 +192,11 @@ ISR(TIMER2_OVF_vect)
 // pin change interrupt
 ISR(PCINT2_vect)
 {
+    if(is_startup)
+    {
+        TCCR1B |= (1 << CS10);
+        return;
+    }
     // value of pwm in pin
     k = PIND & (1 <<PD2);
 
@@ -145,10 +209,20 @@ ISR(PCINT2_vect)
     if(k)
         timer_start = TCNT2;
     else
-        t_diff = TCNT2 - timer_start;
+    {
+        if(timer_start > TCNT2)
+        {
+            t_diff = ((int16_t)(TCNT2) + 0xff) - timer_start;
+        }
+        else
+            t_diff = TCNT2 - timer_start;
+    }
 
     //compute pwm duty cycle desired
     uint8_t pwm_des = map(t_diff,DEADBAND_MIN,DEADBAND_MAX,OUT_MIN,OUT_MAX);
+
+
+    filtered_value = pwm_des;
 
 
     // if it's zero, turn off PWM
@@ -172,7 +246,11 @@ ISR(PCINT2_vect)
 int main(void) {
     // initialize the direction of PORTD #6 to be an output
     //set_output(DDRB, LED);  
+    DDRB |= (1 << DDB1)|(1 << DDB2);
+    safe_output_pin();
     init_pwm();
+    hobby_king();
+    is_startup = 0;
 
     for(;;)
     {
