@@ -22,11 +22,10 @@
 #define DEADBAND_MAX 60  // values larger than this (but less than in_max) result in full on
 #define OUT_MIN 0        // minimum duty cycle (out of 255)
 #define OUT_MAX 0xff     // maximum duty cycle (out of 255)
-#define MAX_DOGS 3       // number of timer 2 overflows between watchdog checks
 #define MIN_EDGES 2      // minimum number of edges required to make watchdog happy
 #define MAX_EDGES 12      // maximum number of edges required to make watchdog happy
 
-#define MAX_DOGS 3
+#define MAX_DOGS 5
 
 uint8_t has_pwm = 0;
 
@@ -86,6 +85,8 @@ void init_timers()
     PCICR |= 0b00000100;    // turn on port d
     PCMSK2 |= 0b00000100;   // only use d2
     sei();
+
+    PORTD |= (1 << PD2);
 }
 
 
@@ -97,7 +98,7 @@ ISR(TIMER2_OVF_vect)
     if(num_overflows > MAX_DOGS)
     {
         num_overflows = 0;
-        has_pwm = (num_edges > 2);
+        has_pwm = (num_edges > 4);
         num_edges = 0;
     }
 
