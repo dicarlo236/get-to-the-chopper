@@ -21,11 +21,11 @@
 #define DEADBAND_MIN 36  // values less than this result in 0 output
 #define DEADBAND_MAX 60  // values larger than this (but less than in_max) result in full on
 #define OUT_MIN 0        // minimum duty cycle (out of 255)
-#define OUT_MAX 0xff     // maximum duty cycle (out of 255)
-#define MIN_EDGES 2      // minimum number of edges required to make watchdog happy
-#define MAX_EDGES 12      // maximum number of edges required to make watchdog happy
+#define OUT_MAX 0x7f     // maximum duty cycle (out of 255)
+#define MIN_EDGES 1      // minimum number of edges required to make watchdog happy
+#define MAX_EDGES 300      // maximum number of edges required to make watchdog happy
 
-#define MAX_DOGS 5
+#define MAX_DOGS 200
 
 uint8_t has_pwm = 0;
 
@@ -58,7 +58,7 @@ void init_timers()
     DDRB |= (1 << DDB1)|(1 << DDB2);
 
     // timer reset value of 255
-    ICR1 = 0x00FF;
+    ICR1 = 0x007F;
 
     // duty cycle starts at zero
     OCR1A = 0x00;
@@ -99,6 +99,7 @@ ISR(TIMER2_OVF_vect)
     {
         num_overflows = 0;
         has_pwm = (num_edges > 4);
+        //has_pwm = 1;
         num_edges = 0;
     }
 
